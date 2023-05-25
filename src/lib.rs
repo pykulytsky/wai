@@ -1,8 +1,8 @@
-#![allow(dead_code, unused_imports)]
-
-use seize::{reclaim, AtomicPtr, Collector, Linked};
+use seize::{reclaim, AtomicPtr, Collector};
 use std::sync::atomic::Ordering;
 use std::{mem::ManuallyDrop, ptr};
+
+pub mod doubly;
 
 pub struct LinkedList<T> {
     head: AtomicPtr<Node<T>>,
@@ -23,6 +23,7 @@ impl<T> LinkedList<T> {
         }
     }
 
+    #[inline]
     pub fn push_front(&self, t: T) {
         let new = self.collector.link_boxed(Node {
             inner: ManuallyDrop::new(t),
@@ -45,6 +46,7 @@ impl<T> LinkedList<T> {
         }
     }
 
+    #[inline]
     pub fn push_back(&self, t: T) {
         let new = self.collector.link_boxed(Node {
             inner: ManuallyDrop::new(t),
@@ -102,6 +104,7 @@ impl<T> LinkedList<T> {
         }
     }
 
+    #[inline]
     pub fn pop_front(&self) -> Option<T> {
         let guard = self.collector.enter();
 
