@@ -1,6 +1,6 @@
 #![allow(dead_code, unused_imports)]
 
-use seize::{reclaim, AtomicPtr, Collector, Linked};
+use seize::{reclaim, AtomicPtr, Collector, Guard, Linked};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{mem::ManuallyDrop, ptr};
 

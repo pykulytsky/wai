@@ -3,6 +3,7 @@ use std::sync::atomic::Ordering;
 use std::{mem::ManuallyDrop, ptr};
 
 pub mod doubly;
+pub mod doubly_new;
 
 pub struct LinkedList<T> {
     head: AtomicPtr<Node<T>>,
