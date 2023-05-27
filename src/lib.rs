@@ -4,6 +4,7 @@ use std::{mem::ManuallyDrop, ptr};
 
 pub mod doubly;
 pub mod doubly_new;
+pub mod queue;
 
 pub struct LinkedList<T> {
     head: AtomicPtr<Node<T>>,

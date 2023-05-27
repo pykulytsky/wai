@@ -62,6 +62,7 @@ impl<T> LinkedList<T> {
         guard: &Guard,
     ) -> bool {
         let next = guard.protect(&unsafe { &*onto }.next, Ordering::Acquire);
+        unsafe { &*new }.prev.store(onto, Ordering::Release);
 
         if !next.is_null() {
             let _ = self
@@ -76,7 +77,6 @@ impl<T> LinkedList<T> {
                 .is_ok();
 
             if result {
-                unsafe { &*new }.prev.store(onto, Ordering::Release);
                 let _ = self
                     .tail
                     .compare_exchange(onto, new, Ordering::Release, Ordering::Relaxed);
@@ -93,6 +93,7 @@ impl<T> LinkedList<T> {
         guard: &Guard,
     ) -> bool {
         let prev = guard.protect(&unsafe { &*onto }.prev, Ordering::Acquire);
+        unsafe { &*new }.next.store(onto, Ordering::Release);
 
         if !prev.is_null() {
             let _ = self
@@ -105,9 +106,8 @@ impl<T> LinkedList<T> {
                 .prev
                 .compare_exchange(ptr::null_mut(), new, Ordering::Release, Ordering::Relaxed)
                 .is_ok();
-
             if result {
-                unsafe { &*new }.next.store(onto, Ordering::Release);
+                println!("tail: {}", self.tail.load(Ordering::Acquire) == onto);
                 let _ = self
                     .head
                     .compare_exchange(onto, new, Ordering::Release, Ordering::Relaxed);
@@ -136,7 +136,9 @@ impl<T> LinkedList<T> {
                             Ordering::Relaxed,
                         );
                     }
-                    Ok(unsafe { self.consume_and_retire(head) })
+
+                    let data = unsafe { ptr::read(&(*next).inner) };
+                    Ok(unsafe { self.consume_and_retire(head, data) })
                 }
                 Err(_) => Err(()),
             }
@@ -157,15 +159,17 @@ impl<T> LinkedList<T> {
             {
                 Ok(_) => {
                     let head = guard.protect(&self.head, Ordering::Release);
-                    if head == head {
-                        let _ = self.tail.compare_exchange(
+                    if head == tail {
+                        let _ = self.head.compare_exchange(
                             head,
                             prev,
                             Ordering::Release,
                             Ordering::Relaxed,
                         );
                     }
-                    Ok(unsafe { self.consume_and_retire(tail) })
+
+                    let data = unsafe { ptr::read(&(*prev).inner) };
+                    Ok(unsafe { self.consume_and_retire(tail, data) })
                 }
                 Err(_) => Err(()),
             }
@@ -219,13 +223,23 @@ impl<T> LinkedList<T> {
     }
 
     #[inline]
-    unsafe fn consume_and_retire(&self, ptr: *mut Linked<Node<T>>) -> Option<T> {
-        let data = ptr::read(&(*ptr).inner);
+    unsafe fn consume_and_retire(
+        &self,
+        ptr: *mut Linked<Node<T>>,
+        data: MaybeUninit<ManuallyDrop<T>>,
+    ) -> Option<T> {
         self.collector.retire(ptr, reclaim::boxed::<Node<T>>);
         self.len.fetch_sub(1, Ordering::Release);
         return Some(ManuallyDrop::into_inner(data.assume_init()));
     }
 }
+//
+// impl<T> Drop for LinkedList<T> {
+//     fn drop(&mut self) {
+//         while self.pop_front().is_some() {}
+//         while self.pop_back().is_some() {}
+//     }
+// }
 
 #[cfg(test)]
 mod tests {
@@ -234,7 +248,6 @@ mod tests {
     use super::*;
 
     #[test]
-    #[ignore = "fail"]
     fn push_back_pop_front() {
         let list = LinkedList::new();
         list.push_back(1);
@@ -367,10 +380,10 @@ mod tests {
                 .next
                 .load(Ordering::Acquire)
         };
-        assert_eq!(list.pop_front().unwrap(), 3);
-
+        list.pop_front().unwrap();
         let head = list.head.load(Ordering::Acquire);
         assert_eq!(head, head_next);
+        assert_eq!(list.pop_front().unwrap(), 3);
         assert_eq!(list.pop_front().unwrap(), 2);
         assert_eq!(list.pop_front().unwrap(), 1);
         assert_eq!(list.len(), 0);
@@ -413,5 +426,23 @@ mod tests {
             });
         });
         assert_eq!(list.len(), 0);
+    }
+
+    #[test]
+    fn push_back_pop_front_temp() {
+        let list = LinkedList::new();
+        list.push_back(1);
+        list.push_back(2);
+        assert_eq!(list.pop_front().unwrap(), 1);
+        assert_eq!(list.pop_front().unwrap(), 2);
+    }
+
+    #[test]
+    fn push_front_pop_back_temp() {
+        let list = LinkedList::new();
+        list.push_front(1);
+        list.push_front(2);
+        assert_eq!(list.pop_back().unwrap(), 1);
+        assert_eq!(list.pop_back().unwrap(), 2);
     }
 }
